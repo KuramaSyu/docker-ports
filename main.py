@@ -122,8 +122,8 @@ def main(directory, depth):
                 port_domain_mapping[port] = None
         services_ports_mapped[service] = [(port, domain) for port, domain in port_domain_mapping.items()]
     
+    # List with tuples (Serice, Port, Domain)
     tabulated_data: List[str, List[Tuple(str, str, str | None)]] = []
-    print(services_ports_mapped)
     if services_ports_mapped:
         click.echo("\nExposed ports for services:")
         for service, port_pair in services_ports_mapped.items():
