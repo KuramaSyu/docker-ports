@@ -1,0 +1,9 @@
+services:
+  sonarr:
+    ports:
+      - 7788:7777
+      - 8888:3333
+
+  radarr:
+    ports:
+      3333:3333
