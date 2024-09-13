@@ -32,6 +32,8 @@ def get_traefik_domain(labels, port) -> str:
         match = port_label_pattern.match(label)
         if match and str(value) == port:
             service_name = match.group(1)
+            # for matching service_name-service, remove the -service part
+            service_name = service_name.removesuffix("-service")
             # Check if there's a Traefik rule that binds this service to a domain
             domain_label = f'traefik.http.routers.{service_name}.rule'
             rule = labels.get(domain_label)
