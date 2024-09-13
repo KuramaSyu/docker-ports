@@ -6,7 +6,7 @@ from collections import defaultdict
 from typing import *
 
 # Function to scan directories for Docker Compose files
-def scan_directories(base_dir, max_depth):
+def scan_directories(base_dir, max_depth) -> Dict[str, List[str]]:
     services_ports = defaultdict(list)
     compose_file_patterns = re.compile(r'(docker-compose|compose)\.ya?ml$', re.IGNORECASE)
 
@@ -16,9 +16,7 @@ def scan_directories(base_dir, max_depth):
 
         for root, dirs, files in os.walk(directory):
             for file in files:
-                print(f"{file=}")
                 if compose_file_patterns.search(file):
-                    print("matched")
                     file_path = os.path.join(root, file)
                     parse_compose_file(file_path, services_ports)
 
@@ -58,12 +56,14 @@ def main(directory, depth):
     """
     click.echo(f"Scanning '{directory}' up to depth {depth} for Docker Compose files...")
 
-    services_ports = scan_directories(directory, depth)
+    services_ports: Dict[str, List[str]] = scan_directories(directory, depth)
+    print (services_ports)
+    services_ports: Dict[str, Set[str]]  = {k: set(v) for k, v in services_ports.items()}
 
     if services_ports:
         click.echo("\nExposed ports for services:")
         for service, ports in services_ports.items():
-            click.echo(f"Service '{service}' exposes ports: {', '.join(ports)}")
+            click.echo(f"{service}: {', '.join(ports)}")
     else:
         click.echo("No services with exposed ports found.")
 
