@@ -5,9 +5,10 @@ services:
       - 8888:3333
     labels:
       traefik.enable: true
-      traefik.http.routers.sonarr.rule: Host(`sonarr.example.com`)
+      traefik.http.routers.sonarr-de.rule: Host(`sonarr.example.com`)
       traefik.http.routers.sonarr.entrypoints: websecure
       traefik.http.routers.sonarr.tls.certresolver: myresolver
+      traefik.http.services.sonarr-de.loadbalancer.server.port: 3333
   radarr:
     ports:
       3333:3333

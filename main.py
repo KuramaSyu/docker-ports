@@ -27,12 +27,11 @@ def get_traefik_domain(labels, port) -> str:
     port = str(port)
 
     # Search for the Traefik service port label
-    port_label_pattern = re.compile(r'traefik\.http\.services\.(\w+)\.loadbalancer\.server\.port')
+    port_label_pattern = re.compile(r'traefik\.http\.services\.((?:\w|[-])+)\.loadbalancer\.server\.port')
     for label, value in labels.items():
         match = port_label_pattern.match(label)
-        if match and value == port:
+        if match and str(value) == port:
             service_name = match.group(1)
-            
             # Check if there's a Traefik rule that binds this service to a domain
             domain_label = f'traefik.http.routers.{service_name}.rule'
             rule = labels.get(domain_label)
