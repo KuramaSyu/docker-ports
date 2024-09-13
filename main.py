@@ -127,7 +127,6 @@ def main(directory, depth):
         click.echo("\nExposed ports for services:")
         for service, ports in services_ports_mapped.items():
             row = [service, []]
-            print (ports)
             for port, domain in ports:
                 row[-1].append(port)
                 if domain:
