@@ -112,9 +112,9 @@ def main(directory, depth):
     # filter duplicate ports
     services_ports: Dict[str, List[str]] = scan_directories(directory, depth)
     services_ports_mapped: Dict[str, Set[str]] = defaultdict(set)
-    for service, ports in services_ports.items():
+    for service, port_pair in services_ports.items():
         port_domain_mapping = {}
-        for port, domain in ports:
+        for port, domain in port_pair:
             if domain:
                 port_domain_mapping[port] = domain
                 continue
@@ -122,17 +122,14 @@ def main(directory, depth):
                 port_domain_mapping[port] = None
         services_ports_mapped[service] = [(port, domain) for port, domain in port_domain_mapping.items()]
     
-    tabulated_data: List[str, str] = []
+    tabulated_data: List[str, List[Tuple(str, str, str | None)]] = []
+    print(services_ports_mapped)
     if services_ports_mapped:
         click.echo("\nExposed ports for services:")
-        for service, ports in services_ports_mapped.items():
-            row = [service, []]
-            for port, domain in ports:
-                row[-1].append(port)
-                if domain:
-                    row[-1][-1] += f" ({domain})"
-            tabulated_data.append([row[0], "\n".join(row[1])])
-        click.echo(tabulate(tabulated_data, tablefmt="simple_grid"))
+        for service, port_pair in services_ports_mapped.items():
+            for port, domain in port_pair:
+                tabulated_data.append((service, port, domain))
+        click.echo(tabulate(tabulated_data, tablefmt="rounded_outline", headers=["Service", "Port", "Domain"]))
     else:
         click.echo("No services with exposed ports found.")
 
