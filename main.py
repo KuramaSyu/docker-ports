@@ -84,9 +84,13 @@ def scan_directories(base_dir, max_depth) -> Dict[str, List[Tuple[str, str]]]:
                                 service_ports = add_to_service_ports(services_ports, port_pair, labels, service)
             except yaml.YAMLError as exc:
                 click.echo(f"Error parsing YAML file {file_path}: {exc}")
-
+ports
     def add_to_service_ports(service_ports, ports: str, labels: Dict[str, Any], service: str):
-        extern, intern_ = ports.split(":")
+        extern, intern_ = None, None
+        try:
+            extern, intern_ = ports.split(":")
+        except ValueError:
+            extern, intern_ = ports, ports
         domain = get_traefik_domain(labels, intern_)
         port = extern if domain == "localhost" else intern_
         services_ports[service].append((port, domain))
