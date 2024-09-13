@@ -5,7 +5,7 @@ import click
 from collections import defaultdict
 from typing import *
 
-def get_traefik_domain(labels, port) -> str:
+def get_traefik_domain(labels, port) -> str | None:
     """
     Check if the given port is bound to a Traefik domain based on Docker Compose labels.
 
@@ -18,10 +18,10 @@ def get_traefik_domain(labels, port) -> str:
     """
     # Check if Traefik is enabled
     if not isinstance(labels, dict):
-        return "localhost"
+        return None
 
     if labels.get("traefik.enable", False) != True:
-        return "localhost"
+        return None
     
     # Convert port to string (as labels might store port numbers as strings)
     port = str(port)
@@ -43,11 +43,11 @@ def get_traefik_domain(labels, port) -> str:
                 if domain_match:
                     return domain_match.group(1)
     
-    return "localhost"
+    return None
 
 
 # Function to scan directories for Docker Compose files
-def scan_directories(base_dir, max_depth) -> Dict[str, List[Tuple[str, str]]]:
+def scan_directories(base_dir, max_depth) -> Dict[str, List[Tuple[str, str | None]]]:
     services_ports = defaultdict(list)
     compose_file_patterns = re.compile(r'(docker-compose|compose)\.ya?ml$', re.IGNORECASE)
 
@@ -93,8 +93,7 @@ def scan_directories(base_dir, max_depth) -> Dict[str, List[Tuple[str, str]]]:
         except ValueError:
             extern, intern_ = ports, ports
         domain = get_traefik_domain(labels, intern_)
-        port = extern if domain == "localhost" else intern_
-        services_ports[service].append((port, domain))
+        services_ports[service].append((extern, domain))
         return services_ports
     scan_directory(base_dir, 0)
     return services_ports
@@ -115,7 +114,13 @@ def main(directory, depth):
     if services_ports:
         click.echo("\nExposed ports for services:")
         for service, ports in services_ports.items():
-            click.echo(f"{service}: {'; '.join(f'{port} ({domain})' for port, domain in ports)}")
+            line = f"  {service}: "
+            for port, domain in ports:
+                line += f"{port}"
+                if domain:
+                    line += f" ({domain})"
+                line += "; "
+            click.echo(line)
     else:
         click.echo("No services with exposed ports found.")
 
