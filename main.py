@@ -84,7 +84,7 @@ def scan_directories(base_dir, max_depth) -> Dict[str, List[Tuple[str, str]]]:
                                 service_ports = add_to_service_ports(services_ports, port_pair, labels, service)
             except yaml.YAMLError as exc:
                 click.echo(f"Error parsing YAML file {file_path}: {exc}")
-ports
+
     def add_to_service_ports(service_ports, ports: str, labels: Dict[str, Any], service: str):
         extern, intern_ = None, None
         try:
