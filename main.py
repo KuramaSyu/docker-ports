@@ -3,6 +3,7 @@ import yaml
 import re
 import click
 from collections import defaultdict
+from typing import *
 
 # Function to scan directories for Docker Compose files
 def scan_directories(base_dir, max_depth):
@@ -28,8 +29,8 @@ def scan_directories(base_dir, max_depth):
     def parse_compose_file(file_path, services_ports):
         with open(file_path, 'r') as stream:
             try:
-                data = yaml.safe_load(stream)
-                if 'services' in data:
+                data: None | Any = yaml.safe_load(stream)
+                if data is not None and 'services' in data:
                     for service, service_data in data['services'].items():
                         if 'ports' in service_data:
                             ports: List[str] | str = service_data['ports']
