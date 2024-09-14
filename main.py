@@ -23,46 +23,58 @@ def get_running_containers(path: str) -> str:
         print(f"Error checking Docker Compose status: {e}")
         return ""
 
-def get_traefik_domain(labels, port) -> str | None:
+def get_traefik_domain(labels: dict, port: Optional[Union[str, int]] = None) -> Union[None, str, List[str]]:
     """
     Check if the given port is bound to a Traefik domain based on Docker Compose labels.
-
+    
     Args:
         labels (dict): A dictionary of labels from the Docker Compose file.
-        port (str or int): The port to check.
-
+        port (str, int, or None): The port to check, or None to retrieve all domains.
+    
     Returns:
-        str: The domain bound to the port, or 'localhost' if no domain is found.
+        str: The domain bound to the port.
+        list: A list of domains if no port is specified.
+        None: If no domain is found or Traefik is not enabled.
     """
-    # Check if Traefik is enabled
+    # Ensure labels are a dictionary and Traefik is enabled
     if not isinstance(labels, dict):
         return None
 
     if labels.get("traefik.enable", False) != True:
         return None
     
-    # Convert port to string (as labels might store port numbers as strings)
-    port = str(port)
+    # If a port is provided, convert it to string for comparison
+    if port is not None:
+        port = str(port)
 
-    # Search for the Traefik service port label
+    domains = []
+
+    # Compile regex pattern for Traefik service port labels
     port_label_pattern = re.compile(r'traefik\.http\.services\.((?:\w|[-])+)\.loadbalancer\.server\.port')
+
     for label, value in labels.items():
+        # If port is specified, only process labels that match the given port
         match = port_label_pattern.match(label)
-        if match and str(value) == port:
+        if match and (port is None or str(value) == port):
             service_name = match.group(1)
-            # for matching service_name-service, remove the -service part
+            # Remove '-service' suffix if present
             service_name = service_name.removesuffix("-service")
-            # Check if there's a Traefik rule that binds this service to a domain
+            
+            # Check for a Traefik rule that binds this service to a domain
             domain_label = f'traefik.http.routers.{service_name}.rule'
             rule = labels.get(domain_label)
             if rule:
                 # Extract domain from the rule (expecting something like Host(`example.com`))
                 domain_match = re.search(r"Host\(`([^`]*)`\)", rule)
                 if domain_match:
-                    return domain_match.group(1)
+                    domains.append(domain_match.group(1))
     
-    return None
+    # If port is specified, return the first domain or 'localhost' if no domain is found
+    if port is not None:
+        return domains[0] if domains else None
 
+    # If no port is specified, return the list of all found domains
+    return domains if domains else None
 
 # Function to scan directories for Docker Compose files
 def scan_directories(base_dir, max_depth) -> Dict[str, List[Tuple[str, str | None]]]:
@@ -77,7 +89,10 @@ def scan_directories(base_dir, max_depth) -> Dict[str, List[Tuple[str, str | Non
             for file in files:
                 if compose_file_patterns.search(file):
                     file_path = os.path.join(root, file)
-                    parse_compose_file(file_path, services_ports)
+                    try:
+                        parse_compose_file(file_path, services_ports)
+                    except Exception as e:
+                        click.echo(f"Error scanning {file_path}: {e}")
 
             for dir in dirs:
                 scan_directory(os.path.join(root, dir), current_depth + 1)
@@ -95,8 +110,9 @@ def scan_directories(base_dir, max_depth) -> Dict[str, List[Tuple[str, str | Non
                 for service, service_data in data['services'].items():
                     labels = service_data.get('labels', {})
                     # TODO: handeling when labels are list of strings
-                    if not 'ports' in service_data:
+                    if not 'ports' in service_data and not labels:
                         continue
+                        
                     ports: List[str] | str = service_data['ports']
                     if isinstance(ports, str):
                         if " " in ports:
@@ -107,8 +123,26 @@ def scan_directories(base_dir, max_depth) -> Dict[str, List[Tuple[str, str | Non
                             ports: List[str] = [ports]
                     for port_pair in ports:
                         service_ports = add_to_service_ports(services_ports, port_pair, labels, service, running_containers)
+                    service_ports = add_domains_to_service_ports(services_ports, labels, service, running_containers)
+
             except yaml.YAMLError as exc:
                 click.echo(f"Error parsing YAML file {file_path}: {exc}")
+
+    def add_domains_to_service_ports(service_ports, labels: Dict[str, Any], service: str, running_containers: str) -> Dict[str, Set[Row]]:
+        domains = get_traefik_domain(labels)
+        if not domains:
+            return service_ports
+        for domain in domains:
+            is_running = service in running_containers
+            rows = service_ports[service]
+            row = Row(service, None, domain, is_running)
+            if row not in rows:
+                rows.add(row)
+            else:
+                for r in rows:
+                    if r == row:
+                        r.add_domain(domain)
+        return service_ports
 
     def add_to_service_ports(service_ports, ports: str, labels: Dict[str, Any], service: str, running_containers: str) -> Dict[str, Set[Row]]:
         extern, intern_ = None, None
@@ -163,7 +197,7 @@ class Row:
         return f"Row({self.service}, {self.port}, {self.domain}, {self.is_running})"
 
     def __eq__(self, other):
-        return self.service == other.service
+        return self.service == other.service or self.domain == other.domain
 
 # Main CLI definition using Click
 @click.command()
