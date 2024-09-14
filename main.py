@@ -7,6 +7,22 @@ from typing import *
 from tabulate import tabulate
 import subprocess
 
+def get_running_containers(path: str) -> str:
+    try:
+        # Run the 'docker compose ps' command in the specified directory to check the status of the containers
+        result = subprocess.run(
+            ["docker", "compose", "ps", "--services", "--filter", "status=running"],
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
+            cwd=path  # Specify the working directory
+        )
+        # If any services are running, this will not be empty
+        return result.stdout.strip()
+    except Exception as e:
+        print(f"Error checking Docker Compose status: {e}")
+        return ""
+
 def get_traefik_domain(labels, port) -> str | None:
     """
     Check if the given port is bound to a Traefik domain based on Docker Compose labels.
@@ -50,7 +66,7 @@ def get_traefik_domain(labels, port) -> str | None:
 
 # Function to scan directories for Docker Compose files
 def scan_directories(base_dir, max_depth) -> Dict[str, List[Tuple[str, str | None]]]:
-    services_ports = defaultdict(list)
+    services_ports: Dict[str, Set[Row]] = defaultdict(set)
     compose_file_patterns = re.compile(r'(docker-compose|compose)\.ya?ml$', re.IGNORECASE)
 
     def scan_directory(directory, current_depth):
@@ -68,44 +84,61 @@ def scan_directories(base_dir, max_depth) -> Dict[str, List[Tuple[str, str | Non
             break
 
     def parse_compose_file(file_path, services_ports):
+        folder_path = os.path.dirname(file_path)
         with open(file_path, 'r') as stream:
             try:
                 data: None | Any = yaml.safe_load(stream)
-                if data is not None and 'services' in data:
-                    for service, service_data in data['services'].items():
-                        labels = service_data.get('labels', {})
-                        # TODO: handeling when labels are list of strings
-                        if 'ports' in service_data:
-                            ports: List[str] | str = service_data['ports']
-                            if isinstance(ports, str):
-                                if " " in ports:
-                                    ports: List[str] = [x for x in ports.split(" ")]
-                                else:
-                                    service_ports = add_to_service_ports(services_ports, ports, labels, service)
-                                    continue
-                            for port_pair in ports:
-                                service_ports = add_to_service_ports(services_ports, port_pair, labels, service)
+                if data is None or 'services' not in data:
+                    return 
+                running_containers = get_running_containers(folder_path)
+                for service, service_data in data['services'].items():
+                    labels = service_data.get('labels', {})
+                    # TODO: handeling when labels are list of strings
+                    if not 'ports' in service_data:
+                        continue
+                    ports: List[str] | str = service_data['ports']
+                    if isinstance(ports, str):
+                        if " " in ports:
+                            # multiple ports separated by space
+                            ports: List[str] = [x for x in ports.split(" ")]
+                        else:
+                            # one port pair
+                            ports: List[str] = [ports]
+                    for port_pair in ports:
+                        service_ports = add_to_service_ports(services_ports, port_pair, labels, service, running_containers)
             except yaml.YAMLError as exc:
                 click.echo(f"Error parsing YAML file {file_path}: {exc}")
 
-    def add_to_service_ports(service_ports, ports: str, labels: Dict[str, Any], service: str):
+    def add_to_service_ports(service_ports, ports: str, labels: Dict[str, Any], service: str, running_containers: str) -> Dict[str, Set[Row]]:
         extern, intern_ = None, None
         try:
             extern, intern_ = ports.split(":")
         except ValueError:
             extern, intern_ = ports, ports
         domain = get_traefik_domain(labels, intern_)
-        services_ports[service].append((extern, domain))
-        return services_ports
+        is_running = service in running_containers
+        rows = service_ports[service]
+        row = Row(service, intern_, domain, is_running)
+        if row not in rows:
+            rows.add(row)
+        else:
+            for r in rows:
+                if r == row:
+                    r.add_domain(domain)
+
     scan_directory(base_dir, 0)
     return services_ports
 
 class Row:
-    def __init__(self, service, port, domain):
+    def __init__(self, service, port, domain: str | None, is_running: bool):
         self.service = service
         self.port = port
         self.domain = domain
-    
+        self.is_running = is_running
+    # use service as hash
+    def __hash__(self):
+        return hash(self.service)
+
     def is_docker_container_running(self):
         try:
             # Run the 'docker ps' command with the filter for the container name
@@ -120,6 +153,16 @@ class Row:
         except Exception as e:
             print(f"Error checking container: {e}")
             return False
+
+    def add_domain(self, domain: str | None):
+        if domain:
+            self.domain = domain
+
+    def __repr__(self):
+        return f"Row({self.service}, {self.port}, {self.domain}, {self.is_running})"
+
+    def __eq__(self, other):
+        return self.service == other.service
 
 # Main CLI definition using Click
 @click.command()
@@ -136,28 +179,15 @@ def main(directory, depth, online, offline, has_domain):
     click.echo(f"Scanning '{directory}' up to depth {depth} for Docker Compose files...")
 
     # filter duplicate ports
-    services_ports: Dict[str, List[str]] = scan_directories(directory, depth)
-    services_ports_mapped: Dict[str, Set[str]] = defaultdict(set)
-    for service, port_pair in services_ports.items():
-        port_domain_mapping = {}
-        for port, domain in port_pair:
-            if domain:
-                port_domain_mapping[port] = domain
-                continue
-            if not port_domain_mapping.get(port):
-                port_domain_mapping[port] = None
-        services_ports_mapped[service] = [(port, domain) for port, domain in port_domain_mapping.items()]
+    services_ports: Dict[str, Set[Row]] = scan_directories(directory, depth)
     
-    if not services_ports_mapped:
+    if not services_ports:
+        click.echo("No Docker Compose files found.")
         return
 
     click.echo("\nExposed ports for services:")
 
-    data_as_rows: List[Row] = []
-    for service, port_pair in services_ports_mapped.items():
-        for port, domain in port_pair:
-            row = Row(service, port, domain)
-            data_as_rows.append(row)
+    data_as_rows: List[Row] = [entry for values in services_ports.values() for entry in values]
     
     if online_flag:
         data_as_rows = [row for row in data_as_rows if row.is_docker_container_running()]
