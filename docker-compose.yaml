@@ -17,3 +17,38 @@ services:
   radarr:
     ports:
       3333:3333
+  vaultwarden:
+    image: vaultwarden/server:latest
+    container_name: vaultwarden
+    restart: always
+    environment:
+      WEBSOCKET_ENABLED: "true"  # Enable WebSocket notifications.
+      DOMAIN: https://vaultwarden.inu-the-bot.com
+      DOMAIN_ORIGIN: https://vaultwarden.inu-the-bot.com
+    volumes:
+      - ./vw-data:/data
+    labels:
+      # Watchtower
+      com.centurylinklabs.watchtower.enable: true
+      # Traefik
+      traefik.enable: true
+      # Web-UI
+      traefik.http.routers.vaultwarden.entrypoints: websecure
+      traefik.http.routers.vaultwarden.rule: Host(`vaultwarden.inu-the-bot.com`)
+      traefik.http.routers.vaultwarden.service: vaultwarden-service
+      traefik.http.services.vaultwarden-service.loadbalancer.server.port: 80
+      traefik.http.routers.vaultwarden.tls: true
+      traefik.http.routers.vaultwarden.tls.certresolver: cloudflare-resolver
+      # Websocket
+      traefik.http.routers.vaultwarden-ws.entrypoints: websecure
+      traefik.http.routers.vaultwarden-ws.rule: Host(`vaultwarden.inu-the-bot.com`) && Path(`/notifications/hub`)
+      traefik.http.routers.vaultwarden-ws.service: vaultwarden-ws-service
+      traefik.http.services.vaultwarden-ws-service.loadbalancer.server.port: 3012
+      traefik.http.routers.vaultwarden-ws.tls: true
+      traefik.http.routers.vaultwarden-ws.tls.certresolver: cloudflare-resolver
+    networks:
+      - proxy
+
+networks:
+  proxy:
+    external: true

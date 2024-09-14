@@ -110,7 +110,10 @@ def scan_directories(base_dir, max_depth) -> Dict[str, List[Tuple[str, str | Non
                 for service, service_data in data['services'].items():
                     labels = service_data.get('labels', {})
                     # TODO: handeling when labels are list of strings
-                    if not 'ports' in service_data and not labels:
+                    if not 'ports' in service_data and not "labels" in service_data:
+                        continue
+                    if not 'ports' in service_data:
+                        service_ports = add_domains_to_service_ports(services_ports, labels, service, running_containers)
                         continue
                         
                     ports: List[str] | str = service_data['ports']
@@ -130,14 +133,12 @@ def scan_directories(base_dir, max_depth) -> Dict[str, List[Tuple[str, str | Non
 
     def add_domains_to_service_ports(service_ports, labels: Dict[str, Any], service: str, running_containers: str) -> Dict[str, Set[Row]]:
         domains = get_traefik_domain(labels)
-        print(f"domains: {domains}")
         if not domains:
             return service_ports
         for domain in domains:
             is_running = service in running_containers
-            rows = service_ports[service]
+            rows = service_ports.get(service, set())
             if not any(r.domain == domain for r in rows):
-                print(f"adding domain {domain} to {service}")
                 service_ports[service].add(Row(service, None, domain, is_running))
         return service_ports
 
