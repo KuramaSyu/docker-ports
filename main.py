@@ -223,10 +223,10 @@ def main(directory, depth, online, offline, has_domain):
     print(data_as_rows)
     
     if online_flag:
-        data_as_rows = [row for row in data_as_rows if row.is_docker_container_running()]
+        data_as_rows = [row for row in data_as_rows if row.is_running]
 
     if offline_flag:
-        data_as_rows = [row for row in data_as_rows if not row.is_docker_container_running()]
+        data_as_rows = [row for row in data_as_rows if not row.is_running]
 
     if has_domain_flag:
         data_as_rows = [row for row in data_as_rows if row.domain]
