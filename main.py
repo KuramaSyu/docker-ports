@@ -84,6 +84,7 @@ def scan_directories(base_dir, max_depth) -> Dict[str, List[Tuple[str, str | Non
             break
 
     def parse_compose_file(file_path, services_ports):
+        print(f"Scanning {file_path}")
         folder_path = os.path.dirname(file_path)
         with open(file_path, 'r') as stream:
             try:
