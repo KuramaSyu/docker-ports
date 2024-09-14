@@ -203,7 +203,7 @@ def main(directory, depth, online, offline, has_domain):
             row.service, 
             row.port, 
             row.domain, 
-            "Online" if row.is_docker_container_running() else "Offline"
+            "Online" if row.is_running else "Offline"
         ] for row in data_as_rows
     ]
     click.echo(tabulate(tabulated_data, tablefmt="rounded_outline", headers=["Service", "Port", "Domain", "Status"]))
