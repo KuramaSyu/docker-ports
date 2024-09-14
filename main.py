@@ -125,10 +125,14 @@ class Row:
 @click.command()
 @click.argument('directory', type=click.Path(exists=True, file_okay=False, readable=True))
 @click.argument('depth', type=int)
-def main(directory, depth):
+@click.option('--online', is_flag=True, help="Only show online services.")
+@click.option('--offline', is_flag=True, help="Only show offline services.")
+@click.option('--has-domain', is_flag=True, help="Only show services with a domain.")
+def main(directory, depth, online, offline, has_domain):
     """
     Scan a DIRECTORY for Docker Compose files up to a specified DEPTH of subdirectories.
     """
+    online_flag, offline_flag, has_domain_flag = online, offline, has_domain
     click.echo(f"Scanning '{directory}' up to depth {depth} for Docker Compose files...")
 
     # filter duplicate ports
@@ -144,18 +148,35 @@ def main(directory, depth):
                 port_domain_mapping[port] = None
         services_ports_mapped[service] = [(port, domain) for port, domain in port_domain_mapping.items()]
     
-    # List with tuples (Serice, Port, Domain, online)
-    tabulated_data: List[Tuple(str, str, str | None, str)] = []
-    if services_ports_mapped:
-        click.echo("\nExposed ports for services:")
-        for service, port_pair in services_ports_mapped.items():
-            for port, domain in port_pair:
-                row = Row(service, port, domain)
-                online = "Yes" if row.is_docker_container_running() else "No"
-                tabulated_data.append((service, port, domain, online))
-        click.echo(tabulate(tabulated_data, tablefmt="rounded_outline", headers=["Service", "Port", "Domain", "Online"]))
-    else:
-        click.echo("No services with exposed ports found.")
+    if not services_ports_mapped:
+        return
+
+    click.echo("\nExposed ports for services:")
+
+    data_as_rows: List[Row] = []
+    for service, port_pair in services_ports_mapped.items():
+        for port, domain in port_pair:
+            row = Row(service, port, domain)
+            data_as_rows.append(row)
+    
+    if online_flag:
+        data_as_rows = [row for row in data_as_rows if row.is_docker_container_running()]
+
+    if offline_flag:
+        data_as_rows = [row for row in data_as_rows if not row.is_docker_container_running()]
+
+    if has_domain_flag:
+        data_as_rows = [row for row in data_as_rows if row.domain]
+
+    tabulated_data = [
+        [
+            row.service, 
+            row.port, 
+            row.domain, 
+            "Online" if row.is_docker_container_running() else "Offline"
+        ] for row in data_as_rows
+    ]
+    click.echo(tabulate(tabulated_data, tablefmt="rounded_outline", headers=["Service", "Port", "Domain", "Status"]))
 
 # Entry point for the CLI
 if __name__ == "__main__":
