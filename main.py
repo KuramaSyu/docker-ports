@@ -130,18 +130,15 @@ def scan_directories(base_dir, max_depth) -> Dict[str, List[Tuple[str, str | Non
 
     def add_domains_to_service_ports(service_ports, labels: Dict[str, Any], service: str, running_containers: str) -> Dict[str, Set[Row]]:
         domains = get_traefik_domain(labels)
+        print(f"domains: {domains}")
         if not domains:
             return service_ports
         for domain in domains:
             is_running = service in running_containers
             rows = service_ports[service]
-            row = Row(service, None, domain, is_running)
-            if row not in rows:
-                rows.add(row)
-            else:
-                for r in rows:
-                    if r == row:
-                        r.add_domain(domain)
+            if not any(r.domain == domain for r in rows):
+                print(f"adding domain {domain} to {service}")
+                service_ports[service].add(Row(service, None, domain, is_running))
         return service_ports
 
     def add_to_service_ports(service_ports, ports: str, labels: Dict[str, Any], service: str, running_containers: str) -> Dict[str, Set[Row]]:
@@ -153,7 +150,7 @@ def scan_directories(base_dir, max_depth) -> Dict[str, List[Tuple[str, str | Non
         domain = get_traefik_domain(labels, intern_)
         is_running = service in running_containers
         rows = service_ports[service]
-        row = Row(service, intern_, domain, is_running)
+        row = Row(service, extern, domain, is_running)
         if row not in rows:
             rows.add(row)
         else:
@@ -197,8 +194,7 @@ class Row:
         return f"Row({self.service}, {self.port}, {self.domain}, {self.is_running})"
 
     def __eq__(self, other):
-        return self.service == other.service or self.domain == other.domain
-
+        return self.service == other.service and (self.port == other.port) if all([self.port, other.port]) else (self.domain == other.domain)
 # Main CLI definition using Click
 @click.command()
 @click.argument('directory', type=click.Path(exists=True, file_okay=False, readable=True))
@@ -223,6 +219,7 @@ def main(directory, depth, online, offline, has_domain):
     click.echo("\nExposed ports for services:")
 
     data_as_rows: List[Row] = [entry for values in services_ports.values() for entry in values]
+    print(data_as_rows)
     
     if online_flag:
         data_as_rows = [row for row in data_as_rows if row.is_docker_container_running()]

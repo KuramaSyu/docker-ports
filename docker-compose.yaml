@@ -9,6 +9,11 @@ services:
       traefik.http.routers.sonarr.entrypoints: websecure
       traefik.http.routers.sonarr.tls.certresolver: myresolver
       traefik.http.services.sonarr-de.loadbalancer.server.port: 3333
+
+      traefik.http.routers.sonarrx-de.rule: Host(`sonarrx.example.com`)
+      traefik.http.routers.sonarrx.entrypoints: websecure
+      traefik.http.routers.sonarrx.tls.certresolver: myresolver
+      traefik.http.services.sonarrx-de.loadbalancer.server.port: 4444
   radarr:
     ports:
       3333:3333
