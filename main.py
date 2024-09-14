@@ -5,6 +5,7 @@ import click
 from collections import defaultdict
 from typing import *
 from tabulate import tabulate
+import subprocess
 
 def get_traefik_domain(labels, port) -> str | None:
     """
@@ -99,6 +100,27 @@ def scan_directories(base_dir, max_depth) -> Dict[str, List[Tuple[str, str | Non
     scan_directory(base_dir, 0)
     return services_ports
 
+class Row:
+    def __init__(self, service, port, domain):
+        self.service = service
+        self.port = port
+        self.domain = domain
+    
+    def is_docker_container_running(self):
+        try:
+            # Run the 'docker ps' command with the filter for the container name
+            result = subprocess.run(
+                ["docker", "ps", "--filter", f"name={self.service}", "--format", "{{.Names}}"],
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                text=True
+            )
+            # Check if the container name is in the result
+            return self.service in result.stdout.strip().split('\n')
+        except Exception as e:
+            print(f"Error checking container: {e}")
+            return False
+
 # Main CLI definition using Click
 @click.command()
 @click.argument('directory', type=click.Path(exists=True, file_okay=False, readable=True))
@@ -122,14 +144,16 @@ def main(directory, depth):
                 port_domain_mapping[port] = None
         services_ports_mapped[service] = [(port, domain) for port, domain in port_domain_mapping.items()]
     
-    # List with tuples (Serice, Port, Domain)
-    tabulated_data: List[str, List[Tuple(str, str, str | None)]] = []
+    # List with tuples (Serice, Port, Domain, online)
+    tabulated_data: List[Tuple(str, str, str | None, str)] = []
     if services_ports_mapped:
         click.echo("\nExposed ports for services:")
         for service, port_pair in services_ports_mapped.items():
             for port, domain in port_pair:
-                tabulated_data.append((service, port, domain))
-        click.echo(tabulate(tabulated_data, tablefmt="rounded_outline", headers=["Service", "Port", "Domain"]))
+                row = Row(service, port, domain)
+                online = "Yes" if row.is_docker_container_running() else "No"
+                tabulated_data.append((service, port, domain, online))
+        click.echo(tabulate(tabulated_data, tablefmt="rounded_outline", headers=["Service", "Port", "Domain", "Online"]))
     else:
         click.echo("No services with exposed ports found.")
 
